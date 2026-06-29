@@ -26,20 +26,20 @@
       "tags": ["cloudflare", "workers", "hono", "drizzle", "turso", "react", "typescript"]
     },
     {
-      "id": "trellis-meta",
+      "id": "suncode-meta",
       "type": "skill",
-      "name": "Trellis Meta Skill",
-      "description": "Meta-skill for understanding and customizing Trellis workflows",
+      "name": "Suncode Meta Skill",
+      "description": "Meta-skill for understanding and customizing Suncode workflows",
       "path": "skills/trellis-meta",
-      "tags": ["trellis", "meta", "workflow", "customization"]
+      "tags": ["suncode", "meta", "workflow", "customization"]
     },
     {
-      "id": "trellis-spec-bootstarp",
+      "id": "suncode-spec-bootstrap",
       "type": "skill",
-      "name": "Trellis Spec Bootstarp",
-      "description": "Platform-neutral workflow for bootstrapping project-specific Trellis coding specs",
+      "name": "Suncode Spec Bootstrap",
+      "description": "Platform-neutral workflow for bootstrapping project-specific Suncode coding specs",
       "path": "skills/trellis-spec-bootstarp",
-      "tags": ["trellis", "spec", "bootstrap", "codebase-analysis"]
+      "tags": ["suncode", "spec", "bootstrap", "codebase-analysis"]
     },
     {
       "id": "frontend-fullchain-optimization",
@@ -52,8 +52,8 @@
     {
       "id": "native",
       "type": "workflow",
-      "name": "Native Trellis Workflow",
-      "description": "Default Trellis Plan / Execute / Finish workflow with native sub-agent and inline platform branches",
+      "name": "Native Suncode Workflow",
+      "description": "Default Suncode Plan / Execute / Finish workflow with native sub-agent and inline platform branches",
       "path": "workflows/native/workflow.md",
       "tags": ["workflow", "native", "default"]
     },
@@ -61,7 +61,7 @@
       "id": "tdd",
       "type": "workflow",
       "name": "TDD Workflow",
-      "description": "Trellis workflow variant that drives Phase 2 with one red / green / refactor behavior slice at a time",
+      "description": "Suncode workflow variant that drives Phase 2 with one red / green / refactor behavior slice at a time",
       "path": "workflows/tdd/workflow.md",
       "tags": ["workflow", "tdd", "testing"]
     },
@@ -69,7 +69,7 @@
       "id": "channel-driven-subagent-dispatch",
       "type": "workflow",
       "name": "Channel-Driven Sub-Agent Dispatch",
-      "description": "Trellis workflow variant where the main session coordinates implement/check workers through trellis channel",
+      "description": "Suncode workflow variant where the main session coordinates implement/check workers through Suncode channel",
       "path": "workflows/channel-driven-subagent-dispatch/workflow.md",
       "tags": ["workflow", "channel", "sub-agent", "dogfood"]
     }
