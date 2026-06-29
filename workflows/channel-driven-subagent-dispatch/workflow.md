@@ -20,30 +20,30 @@
 Initialize your identity on first use:
 
 ```bash
-python3 ./.trellis/scripts/init_developer.py <your-name>
+python3 ./.suncode/scripts/init_developer.py <your-name>
 ```
 
 ### Spec System
 
-`.trellis/spec/` stores project engineering guidelines. Before writing code, load the package/layer specs relevant to the task:
+`.suncode/spec/` stores project engineering guidelines. Before writing code, load the package/layer specs relevant to the task:
 
 ```bash
-python3 ./.trellis/scripts/get_context.py --mode packages
+python3 ./.suncode/scripts/get_context.py --mode packages
 ```
 
 ### Task System
 
-Each task has its own directory under `.trellis/tasks/{MM-DD-name}/` with `task.json`, `prd.md`, optional `design.md`, optional `implement.md`, optional `research/`, and `implement.jsonl` / `check.jsonl`.
+Each task has its own directory under `.suncode/tasks/{MM-DD-name}/` with `task.json`, `prd.md`, optional `design.md`, optional `implement.md`, optional `research/`, and `implement.jsonl` / `check.jsonl`.
 
 Common commands:
 
 ```bash
-python3 ./.trellis/scripts/task.py create "<title>" [--slug <name>] [--parent <dir>]
-python3 ./.trellis/scripts/task.py start <name>
-python3 ./.trellis/scripts/task.py current --source
-python3 ./.trellis/scripts/task.py finish
-python3 ./.trellis/scripts/task.py archive <name>
-python3 ./.trellis/scripts/task.py validate <name>
+python3 ./.suncode/scripts/task.py create "<title>" [--slug <name>] [--parent <dir>]
+python3 ./.suncode/scripts/task.py start <name>
+python3 ./.suncode/scripts/task.py current --source
+python3 ./.suncode/scripts/task.py finish
+python3 ./.suncode/scripts/task.py archive <name>
+python3 ./.suncode/scripts/task.py validate <name>
 ```
 
 ### Channel System
@@ -132,7 +132,7 @@ Channel-driven sub-agent dispatch is the default execution model for this workfl
 
 [workflow-state:in_progress]
 Flow: channel-driven `implement` worker -> channel-driven `check` worker -> `suncode-update-spec` -> commit (Phase 3.4) -> `/suncode:finish-work`.
-Main-session default: use `suncode channel spawn` with `.trellis/agents/implement.md` and `.trellis/agents/check.md`; do not use native Claude Task / Codex sub_agent unless explicitly requested or host-only tools require it.
+Main-session default: use `suncode channel spawn` with `.suncode/agents/implement.md` and `.suncode/agents/check.md`; do not use native Claude Task / Codex sub_agent unless explicitly requested or host-only tools require it.
 Worker context order: jsonl entries -> `prd.md` -> `design.md if present` -> `implement.md if present`. Use stable worker handles such as `implement`, `check`, `check-cx`, `check-cc`; read results with `suncode channel messages --raw` when precision matters.
 [/workflow-state:in_progress]
 
@@ -196,7 +196,7 @@ Goal: clarify requirements, get task-creation consent, and produce planning arti
 Create the task directory only after task-creation consent:
 
 ```bash
-python3 ./.trellis/scripts/task.py create "<task title>" --slug <name>
+python3 ./.suncode/scripts/task.py create "<task title>" --slug <name>
 ```
 
 Run only `create` here. Do not also run `start`. `start` switches status to `in_progress`, which moves the breadcrumb into execution.
@@ -231,7 +231,7 @@ Do not put code files in jsonl. Workers read code during execution.
 After artifact review, start the task:
 
 ```bash
-python3 ./.trellis/scripts/task.py start <task-dir>
+python3 ./.suncode/scripts/task.py start <task-dir>
 ```
 
 #### 1.5 Completion criteria
@@ -260,7 +260,7 @@ Goal: the main session turns reviewed planning artifacts into checked code throu
 Use channel-driven implement dispatch:
 
 ```bash
-TASK=.trellis/tasks/<active-task>
+TASK=.suncode/tasks/<active-task>
 suncode channel create impl-<topic> --task "$TASK" --by main --ephemeral
 suncode channel spawn impl-<topic> \
   --agent implement \
@@ -299,7 +299,7 @@ Native sub-agent fallback is allowed only when the user explicitly asks for it o
 Use channel-driven check dispatch:
 
 ```bash
-TASK=.trellis/tasks/<active-task>
+TASK=.suncode/tasks/<active-task>
 suncode channel create cr-<topic> --task "$TASK" --by main --ephemeral
 suncode channel spawn cr-<topic> \
   --agent check \
@@ -353,11 +353,11 @@ If the same class of issue recurred, load `suncode-break-loop` and record root c
 
 #### 3.3 Spec update `[required · once]`
 
-Load `suncode-update-spec` and decide whether new patterns, pitfalls, or technical decisions should be written back to `.trellis/spec/`.
+Load `suncode-update-spec` and decide whether new patterns, pitfalls, or technical decisions should be written back to `.suncode/spec/`.
 
 #### 3.4 Commit changes `[required · once]`
 
-**Spec-sync preamble**: before drafting commits, ask: did this task fix a bug or surface non-obvious knowledge that should land in `.trellis/spec/` so future-you (or future-AI) doesn't repeat the mistake? If yes, return to Phase 3.3 first — spec writes belong in the same task's commit batch, not as a forgotten follow-up.
+**Spec-sync preamble**: before drafting commits, ask: did this task fix a bug or surface non-obvious knowledge that should land in `.suncode/spec/` so future-you (or future-AI) doesn't repeat the mistake? If yes, return to Phase 3.3 first — spec writes belong in the same task's commit batch, not as a forgotten follow-up.
 
 The main session commits work changes. Before committing, separate AI-edited files from unknown dirty files.
 
@@ -376,7 +376,7 @@ After committing, remind the user to run `/suncode:finish-work` to archive the t
 
 ## Customizing Suncode
 
-This workflow is customized through `.trellis/workflow.md`. Scripts parse tags and headings; they do not store fallback prose.
+This workflow is customized through `.suncode/workflow.md`. Scripts parse tags and headings; they do not store fallback prose.
 
 ### Change a step
 

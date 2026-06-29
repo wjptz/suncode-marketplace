@@ -30,7 +30,7 @@
       "type": "skill",
       "name": "Suncode Meta Skill",
       "description": "Meta-skill for understanding and customizing Suncode workflows",
-      "path": "skills/trellis-meta",
+      "path": "skills/suncode-meta",
       "tags": ["suncode", "meta", "workflow", "customization"]
     },
     {
@@ -38,7 +38,7 @@
       "type": "skill",
       "name": "Suncode Spec Bootstrap",
       "description": "Platform-neutral workflow for bootstrapping project-specific Suncode coding specs",
-      "path": "skills/trellis-spec-bootstarp",
+      "path": "skills/suncode-spec-bootstrap",
       "tags": ["suncode", "spec", "bootstrap", "codebase-analysis"]
     },
     {
