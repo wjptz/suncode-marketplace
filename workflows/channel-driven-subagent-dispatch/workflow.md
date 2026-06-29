@@ -6,14 +6,14 @@
 
 1. **Plan before code** — define the task, planning artifacts, and acceptance criteria before implementation.
 2. **The main session coordinates** — the main session clarifies requirements, plans the task, dispatches workers, updates specs, commits, and finishes the work.
-3. **Implementation and checking run in channel workers** — use `trellis channel spawn` for implement/check workers by default instead of host-native sub-agents.
+3. **Implementation and checking run in channel workers** — use `suncode channel spawn` for implement/check workers by default instead of host-native sub-agents.
 4. **Pass context explicitly** — worker context order is `jsonl entries -> prd.md -> design.md -> implement.md`.
-5. **Keep results auditable** — use `trellis channel messages --raw` for worker events; pretty output is an operator dashboard and may truncate progress.
+5. **Keep results auditable** — use `suncode channel messages --raw` for worker events; pretty output is an operator dashboard and may truncate progress.
 6. **Persist decisions** — requirements, research, plans, and review conclusions belong in task files.
 
 ---
 
-## Trellis System
+## Suncode System
 
 ### Developer Identity
 
@@ -70,14 +70,14 @@ Stable worker handles:
 
 ```
 Phase 1: Plan    -> classify, get task-creation consent, then write planning artifacts
-Phase 2: Execute -> implement/check through trellis channel workers
+Phase 2: Execute -> implement/check through suncode channel workers
 Phase 3: Finish  -> verify, update spec, commit, and wrap up
 ```
 
 ### Request Triage
 
-- Simple conversation or small task: ask only whether this turn should create a Trellis task. If the user says no, skip Trellis for this session.
-- Complex task: ask whether you may create a Trellis task and enter planning. If the user says no, do not do broad inline implementation.
+- Simple conversation or small task: ask only whether this turn should create a Suncode task. If the user says no, skip Suncode for this session.
+- Complex task: ask whether you may create a Suncode task and enter planning. If the user says no, do not do broad inline implementation.
 - User approval to create a task is not approval to start implementation. Implementation waits until artifacts are reviewed and `task.py start` has run.
 
 ### Planning Artifacts
@@ -94,9 +94,9 @@ Lightweight tasks may be PRD-only. Complex tasks must have `prd.md`, `design.md`
 Use a parent task when one request contains several independently verifiable deliverables. Child tasks own deliverables that can be planned, implemented, checked, and archived independently. Parent/child structure is not a dependency system; dependencies must be written in the child `prd.md` / `implement.md`.
 
 [workflow-state:no_task]
-No active task. First classify the current turn and ask for task-creation consent before creating any Trellis task.
-Simple conversation / small task: ask only whether this turn should create a Trellis task. If the user says no, skip Trellis for this session.
-Complex task: ask the user if you can create a Trellis task and enter the planning phase. If the user says no, explain, clarify scope, or suggest a smaller split.
+No active task. First classify the current turn and ask for task-creation consent before creating any Suncode task.
+Simple conversation / small task: ask only whether this turn should create a Suncode task. If the user says no, skip Suncode for this session.
+Complex task: ask the user if you can create a Suncode task and enter the planning phase. If the user says no, explain, clarify scope, or suggest a smaller split.
 [/workflow-state:no_task]
 
 ### Phase 1: Plan
@@ -109,17 +109,17 @@ Complex task: ask the user if you can create a Trellis task and enter the planni
 - 1.5 Completion criteria
 
 [workflow-state:planning]
-Load `trellis-brainstorm`; stay in planning.
+Load `suncode-brainstorm`; stay in planning.
 Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
 Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; dependencies must be written in child artifacts, not implied by tree position.
 Channel-worker mode: curate `implement.jsonl` and `check.jsonl` as spec/research manifests before start.
 [/workflow-state:planning]
 
 [workflow-state:planning-inline]
-Load `trellis-brainstorm`; stay in planning.
+Load `suncode-brainstorm`; stay in planning.
 Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
 Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; dependencies must be written in child artifacts, not implied by tree position.
-Inline mode: skip jsonl curation; Phase 2 reads artifacts/specs via `trellis-before-dev`.
+Inline mode: skip jsonl curation; Phase 2 reads artifacts/specs via `suncode-before-dev`.
 [/workflow-state:planning-inline]
 
 ### Phase 2: Execute
@@ -128,17 +128,17 @@ Inline mode: skip jsonl curation; Phase 2 reads artifacts/specs via `trellis-bef
 - 2.2 Quality check `[required · repeatable]`
 - 2.3 Rollback `[on demand]`
 
-Channel-driven sub-agent dispatch is the default execution model for this workflow. The main session uses `trellis channel create`, `trellis channel spawn`, `trellis channel send`, and `trellis channel wait` to coordinate workers. Fall back to native host sub-agents only when the user explicitly asks for native dispatch or a host-only capability is required.
+Channel-driven sub-agent dispatch is the default execution model for this workflow. The main session uses `suncode channel create`, `suncode channel spawn`, `suncode channel send`, and `suncode channel wait` to coordinate workers. Fall back to native host sub-agents only when the user explicitly asks for native dispatch or a host-only capability is required.
 
 [workflow-state:in_progress]
-Flow: channel-driven `implement` worker -> channel-driven `check` worker -> `trellis-update-spec` -> commit (Phase 3.4) -> `/trellis:finish-work`.
-Main-session default: use `trellis channel spawn` with `.trellis/agents/implement.md` and `.trellis/agents/check.md`; do not use native Claude Task / Codex sub_agent unless explicitly requested or host-only tools require it.
-Worker context order: jsonl entries -> `prd.md` -> `design.md if present` -> `implement.md if present`. Use stable worker handles such as `implement`, `check`, `check-cx`, `check-cc`; read results with `trellis channel messages --raw` when precision matters.
+Flow: channel-driven `implement` worker -> channel-driven `check` worker -> `suncode-update-spec` -> commit (Phase 3.4) -> `/suncode:finish-work`.
+Main-session default: use `suncode channel spawn` with `.trellis/agents/implement.md` and `.trellis/agents/check.md`; do not use native Claude Task / Codex sub_agent unless explicitly requested or host-only tools require it.
+Worker context order: jsonl entries -> `prd.md` -> `design.md if present` -> `implement.md if present`. Use stable worker handles such as `implement`, `check`, `check-cx`, `check-cc`; read results with `suncode channel messages --raw` when precision matters.
 [/workflow-state:in_progress]
 
 [workflow-state:in_progress-inline]
-Flow: `trellis-before-dev` -> edit -> channel-driven `check` worker -> validation -> `trellis-update-spec` -> commit (Phase 3.4) -> `/trellis:finish-work`.
-Inline implementation is allowed only when the user asked for it or the change is too small to justify a worker. After editing, prefer `trellis channel spawn --agent check` for independent review.
+Flow: `suncode-before-dev` -> edit -> channel-driven `check` worker -> validation -> `suncode-update-spec` -> commit (Phase 3.4) -> `/suncode:finish-work`.
+Inline implementation is allowed only when the user asked for it or the change is too small to justify a worker. After editing, prefer `suncode channel spawn --agent check` for independent review.
 Read context before editing: `prd.md` -> `design.md if present` -> `implement.md if present`, plus relevant spec/research loaded by skills.
 [/workflow-state:in_progress-inline]
 
@@ -152,7 +152,7 @@ Read context before editing: `prd.md` -> `design.md if present` -> `implement.md
 > Note: step 3.1 was folded into 2.2 (last-iteration full-scope check) and 3.4 (commit preamble). Numbering kept stable to avoid breaking external references.
 
 [workflow-state:completed]
-Code committed. Run `/trellis:finish-work`; if dirty, return to Phase 3.4 first.
+Code committed. Run `/suncode:finish-work`; if dirty, return to Phase 3.4 first.
 [/workflow-state:completed]
 
 ---
@@ -163,25 +163,25 @@ Code committed. Run `/trellis:finish-work`; if dirty, return to Phase 3.4 first.
 2. Run steps in order inside each Phase; `[required]` steps cannot be skipped.
 3. Phase 2 uses channel workers by default. Do not implement large changes directly in the main session unless the user asked for inline work or the task is small enough.
 4. Worker briefs must state the active task, goal, editable scope, validation commands, and forbidden actions.
-5. `trellis channel messages --raw` is the precise audit path; pretty output is only for quick status checks.
+5. `suncode channel messages --raw` is the precise audit path; pretty output is only for quick status checks.
 6. After a worker completes, the main session integrates the result and runs check workers when needed. Final judgment stays with the main session.
 
 ### Active Task Routing
 
 [Claude Code, Cursor, OpenCode, codex-sub-agent, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi]
 
-- Planning or unclear requirements -> `trellis-brainstorm`.
-- `in_progress` implementation -> `trellis channel spawn --agent implement`.
-- `in_progress` quality check -> `trellis channel spawn --agent check`.
-- Repeated debugging -> `trellis-break-loop`; spec updates -> `trellis-update-spec`.
+- Planning or unclear requirements -> `suncode-brainstorm`.
+- `in_progress` implementation -> `suncode channel spawn --agent implement`.
+- `in_progress` quality check -> `suncode channel spawn --agent check`.
+- Repeated debugging -> `suncode-break-loop`; spec updates -> `suncode-update-spec`.
 
 [/Claude Code, Cursor, OpenCode, codex-sub-agent, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi]
 
 [codex-inline, Kilo, Antigravity, Devin]
 
-- Planning or unclear requirements -> `trellis-brainstorm`.
-- Before editing -> `trellis-before-dev`; after editing -> prefer a channel-driven `check` worker.
-- Repeated debugging -> `trellis-break-loop`; spec updates -> `trellis-update-spec`.
+- Planning or unclear requirements -> `suncode-brainstorm`.
+- Before editing -> `suncode-before-dev`; after editing -> prefer a channel-driven `check` worker.
+- Repeated debugging -> `suncode-break-loop`; spec updates -> `suncode-update-spec`.
 
 [/codex-inline, Kilo, Antigravity, Devin]
 
@@ -203,7 +203,7 @@ Run only `create` here. Do not also run `start`. `start` switches status to `in_
 
 #### 1.1 Requirement exploration `[required · repeatable]`
 
-Load `trellis-brainstorm` and write user requirements into `prd.md`. Complex tasks also need `design.md` and `implement.md`.
+Load `suncode-brainstorm` and write user requirements into `prd.md`. Complex tasks also need `design.md` and `implement.md`.
 
 Requirements:
 
@@ -261,8 +261,8 @@ Use channel-driven implement dispatch:
 
 ```bash
 TASK=.trellis/tasks/<active-task>
-trellis channel create impl-<topic> --task "$TASK" --by main --ephemeral
-trellis channel spawn impl-<topic> \
+suncode channel create impl-<topic> --task "$TASK" --by main --ephemeral
+suncode channel spawn impl-<topic> \
   --agent implement \
   --as implement \
   --jsonl "$TASK/implement.jsonl" \
@@ -271,9 +271,9 @@ trellis channel spawn impl-<topic> \
   --file "$TASK/implement.md" \
   --cwd "$PWD" \
   --timeout 60m
-trellis channel send impl-<topic> --as main --to implement --text-file /tmp/implement-brief.md
-trellis channel wait impl-<topic> --as main --kind done --from implement --timeout 60m
-trellis channel messages impl-<topic> --raw --from implement --last 20
+suncode channel send impl-<topic> --as main --to implement --text-file /tmp/implement-brief.md
+suncode channel wait impl-<topic> --as main --kind done --from implement --timeout 60m
+suncode channel messages impl-<topic> --raw --from implement --last 20
 ```
 
 Omit the `design.md` or `implement.md` `--file` when the file does not exist. The brief must state the worker goal, forbidden actions, validation commands, and expected completion summary.
@@ -284,7 +284,7 @@ Native sub-agent fallback is allowed only when the user explicitly asks for it o
 
 [codex-inline, Kilo, Antigravity, Devin]
 
-1. Load `trellis-before-dev`.
+1. Load `suncode-before-dev`.
 2. Read `prd.md`, then `design.md` if present, then `implement.md` if present.
 3. Read relevant research.
 4. Small changes may be implemented inline; larger changes should still use a channel worker.
@@ -300,8 +300,8 @@ Use channel-driven check dispatch:
 
 ```bash
 TASK=.trellis/tasks/<active-task>
-trellis channel create cr-<topic> --task "$TASK" --by main --ephemeral
-trellis channel spawn cr-<topic> \
+suncode channel create cr-<topic> --task "$TASK" --by main --ephemeral
+suncode channel spawn cr-<topic> \
   --agent check \
   --as check \
   --jsonl "$TASK/check.jsonl" \
@@ -310,19 +310,19 @@ trellis channel spawn cr-<topic> \
   --file "$TASK/implement.md" \
   --cwd "$PWD" \
   --timeout 30m
-trellis channel send cr-<topic> --as main --to check --text-file /tmp/check-brief.md
-trellis channel wait cr-<topic> --as main --kind done --from check --timeout 30m
-trellis channel messages cr-<topic> --raw --from check --last 40
+suncode channel send cr-<topic> --as main --to check --text-file /tmp/check-brief.md
+suncode channel wait cr-<topic> --as main --kind done --from check --timeout 30m
+suncode channel messages cr-<topic> --raw --from check --last 40
 ```
 
 For independent cross-provider review, spawn `check-cc` and `check-cx` in the same channel:
 
 ```bash
-trellis channel spawn cr-<topic> --agent check --provider claude --as check-cc --cwd "$PWD" --timeout 30m
-trellis channel spawn cr-<topic> --agent check --provider codex --as check-cx --cwd "$PWD" --timeout 30m
-trellis channel send cr-<topic> --as main --to check-cc --text-file /tmp/check-brief.md
-trellis channel send cr-<topic> --as main --to check-cx --text-file /tmp/check-brief.md
-trellis channel wait cr-<topic> --as main --kind done --from check-cc,check-cx --all --timeout 30m
+suncode channel spawn cr-<topic> --agent check --provider claude --as check-cc --cwd "$PWD" --timeout 30m
+suncode channel spawn cr-<topic> --agent check --provider codex --as check-cx --cwd "$PWD" --timeout 30m
+suncode channel send cr-<topic> --as main --to check-cc --text-file /tmp/check-brief.md
+suncode channel send cr-<topic> --as main --to check-cx --text-file /tmp/check-brief.md
+suncode channel wait cr-<topic> --as main --kind done --from check-cc,check-cx --all --timeout 30m
 ```
 
 Check workers should directly fix clear issues. The main session reads raw events and makes the final judgment.
@@ -331,7 +331,7 @@ Check workers should directly fix clear issues. The main session reads raw event
 
 [codex-inline, Kilo, Antigravity, Devin]
 
-Load `trellis-check` or use a channel-driven check worker. If issues are found, fix and re-check until green.
+Load `suncode-check` or use a channel-driven check worker. If issues are found, fix and re-check until green.
 
 [/codex-inline, Kilo, Antigravity, Devin]
 
@@ -349,11 +349,11 @@ Goal: verify quality, capture lessons, and commit the work.
 
 #### 3.2 Debug retrospective `[on demand]`
 
-If the same class of issue recurred, load `trellis-break-loop` and record root cause plus prevention.
+If the same class of issue recurred, load `suncode-break-loop` and record root cause plus prevention.
 
 #### 3.3 Spec update `[required · once]`
 
-Load `trellis-update-spec` and decide whether new patterns, pitfalls, or technical decisions should be written back to `.trellis/spec/`.
+Load `suncode-update-spec` and decide whether new patterns, pitfalls, or technical decisions should be written back to `.trellis/spec/`.
 
 #### 3.4 Commit changes `[required · once]`
 
@@ -370,11 +370,11 @@ Do not amend. Do not push.
 
 #### 3.5 Wrap-up reminder
 
-After committing, remind the user to run `/trellis:finish-work` to archive the task and record the session.
+After committing, remind the user to run `/suncode:finish-work` to archive the task and record the session.
 
 ---
 
-## Customizing Trellis
+## Customizing Suncode
 
 This workflow is customized through `.trellis/workflow.md`. Scripts parse tags and headings; they do not store fallback prose.
 
