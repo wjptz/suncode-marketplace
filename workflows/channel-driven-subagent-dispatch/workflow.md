@@ -7,7 +7,7 @@
 1. **Plan before code** — define the task, planning artifacts, and acceptance criteria before implementation.
 2. **The main session coordinates** — the main session clarifies requirements, plans the task, dispatches workers, updates specs, commits, and finishes the work.
 3. **Implementation and checking run in channel workers** — use `suncode channel spawn` for implement/check workers by default instead of host-native sub-agents.
-4. **Pass context explicitly** — worker context order is `jsonl entries -> prd.md -> design.md -> implement.md`.
+4. **Pass context explicitly** — each claimed DAG node gets a verified context manifest; channel workers receive the manifest/content paths, not the main transcript.
 5. **Keep results auditable** — use `suncode channel messages --raw` for worker events; pretty output is an operator dashboard and may truncate progress.
 6. **Persist decisions** — requirements, research, plans, and review conclusions belong in task files.
 
@@ -84,10 +84,11 @@ Phase 3: Finish  -> verify, update spec, commit, and wrap up
 
 - `prd.md` — requirements, constraints, and acceptance criteria.
 - `design.md` — technical design for complex tasks.
-- `implement.md` — execution plan, validation commands, review gates, and rollback points for complex tasks.
+- `implement.md` — human-readable implementation view and legacy serial fallback.
+- `execution.json` — canonical dependency DAG shared by channel and inline executors.
 - `implement.jsonl` / `check.jsonl` — worker context manifests. Put spec and research files here, not code files.
 
-Lightweight tasks may be PRD-only. Complex tasks must have `prd.md`, `design.md`, and `implement.md` before `task.py start`.
+Lightweight tasks may keep PRD-only human documentation but use a one-node DAG when enabled. Complex tasks require a reviewed dependency-aware `execution.json` when policy requires it.
 
 ### Parent / Child Task Trees
 
@@ -105,21 +106,24 @@ Complex task: ask the user if you can create a Suncode task and enter the planni
 - 1.1 Requirement exploration `[required · repeatable]`
 - 1.2 Research `[optional · repeatable]`
 - 1.3 Configure context `[required · once]`  (sub-agent-dispatch platforms only)
-- 1.4 Activate task `[required · once]`
-- 1.5 Completion criteria
+- 1.4 Plan execution DAG `[required · once when execution.dag.enabled]`
+- 1.5 Activate task `[required · once]`
+- 1.6 Completion criteria
 
 [workflow-state:planning]
 Load `suncode-brainstorm`; stay in planning.
 Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
-Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; dependencies must be written in child artifacts, not implied by tree position.
+Execution DAG: DAG finalization is not a per-turn action. While blocking questions remain or planning artifacts are still changing, do not scaffold or validate. Once planning converges, if `execution.json` is missing, scaffold it once, review/edit it, and validate once; if the existing plan still matches, reuse it without scaffold or validation; if a material planning change affects deliverables, dependencies, scopes/resources, or validation, edit the existing plan in place and validate once. Never automatically run `scaffold --force`. Include the reviewed DAG in the latest final planning summary before asking for subsequent implementation approval. Preserve safe independent roots/siblings so channel workers can fan out, and end all branches at an integration/check barrier.
+Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; parent/child position is not an execution dependency.
 Channel-worker mode: curate `implement.jsonl` and `check.jsonl` as spec/research manifests before start.
 [/workflow-state:planning]
 
 [workflow-state:planning-inline]
 Load `suncode-brainstorm`; stay in planning.
 Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
-Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; dependencies must be written in child artifacts, not implied by tree position.
-Inline mode: skip jsonl curation; Phase 2 reads artifacts/specs via `suncode-before-dev`.
+Execution DAG: DAG finalization is not a per-turn action. While blocking questions remain or planning artifacts are still changing, do not scaffold or validate. Once planning converges, if `execution.json` is missing, scaffold it once, review/edit it, and validate once; if the existing plan still matches, reuse it without scaffold or validation; if a material planning change affects deliverables, dependencies, scopes/resources, or validation, edit the existing plan in place and validate once. Never automatically run `scaffold --force`. Include the reviewed DAG in the latest final planning summary before asking for subsequent implementation approval. Inline runs the same graph with concurrency one.
+Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; parent/child position is not an execution dependency.
+Inline mode: skip jsonl curation; each claimed node reads its manifest plus specs via `suncode-before-dev`.
 [/workflow-state:planning-inline]
 
 ### Phase 2: Execute
@@ -131,15 +135,15 @@ Inline mode: skip jsonl curation; Phase 2 reads artifacts/specs via `suncode-bef
 Channel-driven sub-agent dispatch is the default execution model for this workflow. The main session uses `suncode channel create`, `suncode channel spawn`, `suncode channel send`, and `suncode channel wait` to coordinate workers. Fall back to native host sub-agents only when the user explicitly asks for native dispatch or a host-only capability is required.
 
 [workflow-state:in_progress]
-Flow: channel-driven `implement` worker -> channel-driven `check` worker -> `suncode-update-spec` -> commit (Phase 3.4) -> `/suncode:finish-work`.
-Main-session default: use `suncode channel spawn` with `.suncode/agents/implement.md` and `.suncode/agents/check.md`; do not use native Claude Task / Codex sub_agent unless explicitly requested or host-only tools require it.
-Worker context order: jsonl entries -> `prd.md` -> `design.md if present` -> `implement.md if present`. Use stable worker handles such as `implement`, `check`, `check-cx`, `check-cc`; read results with `suncode channel messages --raw` when precision matters.
+Flow: validate/start DAG with `--executor channel` -> claim and spawn every safe ready node before waiting -> wait-any NodeResult -> immediately unlock successors -> final integration/check barrier -> `suncode-update-spec` -> commit (Phase 3.4) -> `/suncode:finish-work`.
+Main-session coordinator: dispatch only claimed nodes, pass each envelope's `channelArgs` context files, and never wait before the selected safe fan-out is spawned. Workers execute one node and do not coordinate the graph.
+Worker prompt starts with `Active task:` then `Suncode context manifest:`. Read raw result events when precision matters; record NodeResult v1 with `execution complete` and recompute ready immediately.
 [/workflow-state:in_progress]
 
 [workflow-state:in_progress-inline]
-Flow: `suncode-before-dev` -> edit -> channel-driven `check` worker -> validation -> `suncode-update-spec` -> commit (Phase 3.4) -> `/suncode:finish-work`.
-Inline implementation is allowed only when the user asked for it or the change is too small to justify a worker. After editing, prefer `suncode channel spawn --agent check` for independent review.
-Read context before editing: `prd.md` -> `design.md if present` -> `implement.md if present`, plus relevant spec/research loaded by skills.
+Flow: start the same DAG with `--executor inline` -> claim/execute one node from its manifest -> record NodeResult -> next ready node -> final integration/check barrier -> `suncode-update-spec` -> commit (Phase 3.4) -> `/suncode:finish-work`.
+Inline implementation consumes the same graph with concurrency one; do not invent a separate task-wide serial plan.
+Read the claimed manifest before editing, plus relevant specs loaded by skills without broadening node boundaries.
 [/workflow-state:in_progress-inline]
 
 ### Phase 3: Finish
@@ -226,15 +230,35 @@ Curate worker context manifests:
 
 Do not put code files in jsonl. Workers read code during execution.
 
-#### 1.4 Activate task `[required · once]`
+#### 1.4 Plan execution DAG `[required · once when execution.dag.enabled]`
 
-After artifact review, start the task:
+This is a planning-finalization gate, not a per-turn action. Enter it only after blocking questions are empty and the PRD/design/implementation view has converged.
+
+- If `execution.json` is missing, scaffold it once, review/edit the graph, validate once, and show it in the final planning summary.
+- If the existing plan still matches, reuse it without scaffold or validation.
+- If a material planning change affects the DAG, edit affected nodes and edges in place, validate once, present the changed graph in a new final planning summary, and wait for fresh approval.
+
+Never automatically run `scaffold --force`.
+
+```bash
+python3 ./.suncode/scripts/task.py execution scaffold <task-dir>  # missing plan only
+python3 ./.suncode/scripts/task.py execution validate <task-dir>  # new or materially changed plan only
+python3 ./.suncode/scripts/task.py execution show <task-dir> --json
+```
+
+Review the scaffold. Complex tasks must preserve real independent roots/siblings, declare read/write scopes and resource locks, attach validation/minimal context to every node, keep shared-worktree checks read-only, and feed every branch into a final integration/check barrier.
+
+#### 1.5 Activate task `[required · once]`
+
+Do not re-run `execution validate` here for an unchanged reviewed DAG. If artifacts changed materially after the final summary, return to Phase 1.4, update and validate once, present the new summary, and wait for fresh approval.
+
+After the user approves the latest summary, start the task:
 
 ```bash
 python3 ./.suncode/scripts/task.py start <task-dir>
 ```
 
-#### 1.5 Completion criteria
+#### 1.6 Completion criteria
 
 | Condition | Required |
 | --- | :---: |
@@ -243,6 +267,7 @@ python3 ./.suncode/scripts/task.py start <task-dir>
 | `task.py start` has run | yes |
 | `design.md` exists for complex tasks | yes |
 | `implement.md` exists for complex tasks | yes |
+| `execution.json` validates when DAG is enabled; complex branches feed a final integration/check barrier | yes |
 | `implement.jsonl` and `check.jsonl` each contain at least one real curated entry (seed row does not count) | yes |
 
 Runtime consumers tolerate missing or seed-only manifests for compatibility, but that tolerance is not a planning-ready state.
@@ -255,85 +280,27 @@ Goal: the main session turns reviewed planning artifacts into checked code throu
 
 #### 2.1 Implement `[required · repeatable]`
 
-[Claude Code, Cursor, OpenCode, codex-sub-agent, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi]
-
-Use channel-driven implement dispatch:
+The main session is the only coordinator:
 
 ```bash
 TASK=.suncode/tasks/<active-task>
-suncode channel create impl-<topic> --task "$TASK" --by main --ephemeral
-suncode channel spawn impl-<topic> \
-  --agent implement \
-  --as implement \
-  --jsonl "$TASK/implement.jsonl" \
-  --file "$TASK/prd.md" \
-  --file "$TASK/design.md" \
-  --file "$TASK/implement.md" \
-  --cwd "$PWD" \
-  --timeout 60m
-suncode channel send impl-<topic> --as main --to implement --text-file /tmp/implement-brief.md
-suncode channel wait impl-<topic> --as main --kind done --from implement --timeout 60m
-suncode channel messages impl-<topic> --raw --from implement --last 20
+python3 ./.suncode/scripts/task.py execution start-run "$TASK" --executor channel --json
+python3 ./.suncode/scripts/task.py execution ready "$TASK" --json
 ```
 
-Omit the `design.md` or `implement.md` `--file` when the file does not exist. The brief must state the worker goal, forbidden actions, validation commands, and expected completion summary.
+For every node in `selected`, call `execution claim "$TASK" <node-id> --json` **before waiting**. Create one channel for the run, then spawn every claimed node using the agent matching `dispatch.role`, the two `--context-file` values in `dispatch.channelArgs`, and `dispatch.prompt` as its brief. Use the node ID as the worker handle. Do not reassemble task-wide JSONL/PRD/design/implement context: the manifest is the deterministic, bounded, redacted source of truth.
 
-Native sub-agent fallback is allowed only when the user explicitly asks for it or a host-only capability is required.
+After all selected workers are spawned, wait without `--all` so the first completion is processed immediately. Read that worker's raw result, store NodeResult v1, call `execution complete`, and immediately call `execution ready` again. Spawn newly unlocked successors while older siblings keep running. This is wait-any; waiting for the full batch discards the DAG's parallelism.
 
-[/Claude Code, Cursor, OpenCode, codex-sub-agent, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi]
+On interruption, run `execution recover`. Only idempotent nodes retry automatically. Shared-worktree conflicts are serialized by the runtime. Native sub-agent fallback is allowed only when the user explicitly asks for it or a host-only capability is required.
 
-[codex-inline, Kilo, Antigravity, Devin]
-
-1. Load `suncode-before-dev`.
-2. Read `prd.md`, then `design.md` if present, then `implement.md` if present.
-3. Read relevant research.
-4. Small changes may be implemented inline; larger changes should still use a channel worker.
-5. After implementation, enter channel-driven check.
-
-[/codex-inline, Kilo, Antigravity, Devin]
+Inline fallback starts the same graph with `--executor inline`, claims one node at a time, verifies its manifest, loads `suncode-before-dev` when coding, and records NodeResult v1. It does not create a separate serial plan.
 
 #### 2.2 Quality check `[required · repeatable]`
 
-[Claude Code, Cursor, OpenCode, codex-sub-agent, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi]
+Independent check nodes are ordinary ready nodes and may fan out across providers when their scopes/resources are safe. In a shared worktree they are read-only: each returns structured findings and validation evidence through NodeResult v1. They do not directly fix code.
 
-Use channel-driven check dispatch:
-
-```bash
-TASK=.suncode/tasks/<active-task>
-suncode channel create cr-<topic> --task "$TASK" --by main --ephemeral
-suncode channel spawn cr-<topic> \
-  --agent check \
-  --as check \
-  --jsonl "$TASK/check.jsonl" \
-  --file "$TASK/prd.md" \
-  --file "$TASK/design.md" \
-  --file "$TASK/implement.md" \
-  --cwd "$PWD" \
-  --timeout 30m
-suncode channel send cr-<topic> --as main --to check --text-file /tmp/check-brief.md
-suncode channel wait cr-<topic> --as main --kind done --from check --timeout 30m
-suncode channel messages cr-<topic> --raw --from check --last 40
-```
-
-For independent cross-provider review, spawn `check-cc` and `check-cx` in the same channel:
-
-```bash
-suncode channel spawn cr-<topic> --agent check --provider claude --as check-cc --cwd "$PWD" --timeout 30m
-suncode channel spawn cr-<topic> --agent check --provider codex --as check-cx --cwd "$PWD" --timeout 30m
-suncode channel send cr-<topic> --as main --to check-cc --text-file /tmp/check-brief.md
-suncode channel send cr-<topic> --as main --to check-cx --text-file /tmp/check-brief.md
-suncode channel wait cr-<topic> --as main --kind done --from check-cc,check-cx --all --timeout 30m
-```
-
-Check workers should directly fix clear issues. The main session reads raw events and makes the final judgment.
-
-[/Claude Code, Cursor, OpenCode, codex-sub-agent, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi]
-
-[codex-inline, Kilo, Antigravity, Devin]
-
-Load `suncode-check` or use a channel-driven check worker. If issues are found, fix and re-check until green.
-
-[/codex-inline, Kilo, Antigravity, Devin]
+Aggregate findings into one dependent `fix` node with an explicit write scope, then run another check/integration node. The final barrier must cover all implementation branches and perform full-scope spec, lint, type-check, test, and cross-layer validation before completion.
 
 #### 2.3 Rollback `[on demand]`
 

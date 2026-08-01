@@ -167,9 +167,10 @@ Phase 3: Finish  → verify, update spec, commit, and wrap up
 
 - `prd.md` — requirements, constraints, and acceptance criteria. Do not put technical design or execution checklists here.
 - `design.md` — technical design for complex tasks: boundaries, contracts, data flow, tradeoffs, compatibility, rollout / rollback shape.
-- `implement.md` — execution plan for complex tasks: ordered checklist, validation commands, review gates, rollback points.
+- `implement.md` — human-readable behavior/implementation view and legacy serial fallback.
+- `execution.json` — canonical dependency DAG shared by inline and sub-agent executors; TDD behavior slices belong in independently verifiable nodes with scopes, resources, validation, context, and a final integration/check barrier.
 - `implement.jsonl` / `check.jsonl` — spec and research manifests for sub-agent context. They do not replace `implement.md`.
-- Lightweight tasks may be PRD-only. Complex tasks must have `prd.md`, `design.md`, and `implement.md` before `task.py start`.
+- Lightweight tasks may keep PRD-only human documentation but use a one-node DAG when enabled. Complex tasks must have `prd.md`, `design.md`, `implement.md`, and a reviewed `execution.json` before `task.py start` when policy requires it.
 
 ### Parent / Child Task Trees
 
@@ -192,8 +193,9 @@ Complex task: ask the user if you can create a Suncode task and enter the planni
 - 1.1 Requirement exploration `[required · repeatable]` (`prd.md`; complex tasks also need `design.md` + `implement.md`)
 - 1.2 Research `[optional · repeatable]`
 - 1.3 Configure context `[required · once]` — Claude Code, Cursor, OpenCode, Codex, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi (sub-agent-dispatch platforms only; inline platforms skip)
-- 1.4 Activate task `[required · once]` (review gate, then `task.py start`; status → in_progress)
-- 1.5 Completion criteria
+- 1.4 Plan execution DAG `[required · once when execution.dag.enabled]`
+- 1.5 Activate task `[required · once]` (review gate, then `task.py start`; status → in_progress)
+- 1.6 Completion criteria
 
 <!-- Per-turn breadcrumb: shown throughout Phase 1 (status='planning') -->
 
@@ -201,7 +203,8 @@ Complex task: ask the user if you can create a Suncode task and enter the planni
 Load `suncode-brainstorm`; stay in planning.
 Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
 TDD planning gate: record observable behavior slices, the public interface under test, and mock boundaries before `task.py start`.
-Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; dependencies must be written in child artifacts, not implied by tree position.
+Execution DAG: DAG finalization is not a per-turn action. While blocking questions remain or behavior/planning artifacts are still changing, do not scaffold or validate. Once planning converges, if `execution.json` is missing, scaffold it once, review/edit it, and validate once; if the existing plan still matches, reuse it without scaffold or validation; if a material planning change affects behavior slices, dependencies, scopes/resources, or validation, edit the existing plan in place and validate once. Never automatically run `scaffold --force`. Include the reviewed DAG in the latest final planning summary before asking for subsequent implementation approval. Keep independent behavior slices dependency-free when their read/write/resource scopes are safe, and make every branch feed a final integration/check barrier.
+Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; parent/child position is not an execution dependency.
 Sub-agent mode: curate `implement.jsonl` and `check.jsonl` as spec/research manifests before start.
 [/workflow-state:planning]
 
@@ -215,8 +218,9 @@ Sub-agent mode: curate `implement.jsonl` and `check.jsonl` as spec/research mani
 Load `suncode-brainstorm`; stay in planning.
 Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
 TDD planning gate: record observable behavior slices, the public interface under test, and mock boundaries before `task.py start`.
-Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; dependencies must be written in child artifacts, not implied by tree position.
-Inline mode: skip jsonl curation; Phase 2 reads artifacts/specs via `suncode-before-dev`.
+Execution DAG: DAG finalization is not a per-turn action. While blocking questions remain or behavior/planning artifacts are still changing, do not scaffold or validate. Once planning converges, if `execution.json` is missing, scaffold it once, review/edit it, and validate once; if the existing plan still matches, reuse it without scaffold or validation; if a material planning change affects behavior slices, dependencies, scopes/resources, or validation, edit the existing plan in place and validate once. Never automatically run `scaffold --force`. Include the reviewed DAG in the latest final planning summary before asking for subsequent implementation approval. Inline runs the same graph with concurrency one.
+Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; parent/child position is not an execution dependency.
+Inline mode: skip jsonl curation; each claimed node reads its manifest plus specs via `suncode-before-dev`.
 [/workflow-state:planning-inline]
 
 ### Phase 2: Execute
@@ -230,12 +234,12 @@ Inline mode: skip jsonl curation; Phase 2 reads artifacts/specs via `suncode-bef
      therefore must cover every required step from implementation through
      commit, including Phase 3.3 spec update and Phase 3.4 commit. -->
 
-Sub-agent dispatch protocol applies to all platforms and all sub-agents, including class-2 Codex/Copilot/Gemini/Qoder and `suncode-research`: every dispatch prompt starts with `Active task: <task path from task.py current>` before role-specific instructions.
+Sub-agent dispatch protocol applies to every execution node: claim the node first, then pass its returned prompt beginning with `Active task:` and `Suncode context manifest:`. The manifest, not the main transcript, defines the behavior slice, boundaries, validation, direct dependency results, and NodeResult v1 response. Codex uses `fork_turns = "none"`.
 
 [workflow-state:in_progress]
-Flow: choose one behavior -> red test -> green implementation -> refactor while green -> `suncode-check` -> `suncode-update-spec` -> commit (Phase 3.4) -> `/suncode:finish-work`.
-Main-session default: dispatch implement/check sub-agents. Sub-agent self-exemption: if already running as `suncode-implement`, do NOT spawn another `suncode-implement` or `suncode-check`; if already running as `suncode-check`, do NOT spawn another `suncode-check` or `suncode-implement`. Dispatch is main session only.
-Dispatch prompt starts with `Active task: <task path from task.py current>`. Read context: jsonl entries -> `prd.md` -> `design.md if present` -> `implement.md if present`.
+Flow: validate/start the DAG -> claim and dispatch every safe ready behavior node before waiting -> each node runs red test -> green implementation -> refactor while green -> wait-any NodeResult -> immediately unlock successors -> final integration/check barrier -> `suncode-update-spec` -> commit (Phase 3.4) -> `/suncode:finish-work`.
+Main-session coordinator only: workers execute one claimed node and never spawn implement/check workers. Recompute `execution ready` after every `execution complete`; do not wait for a whole batch.
+Dispatch prompt starts with `Active task:` then `Suncode context manifest:`; manifest-first hook/pull supplies minimum node context.
 [/workflow-state:in_progress]
 
 <!-- Per-turn breadcrumb: shown while status='in_progress' when
@@ -244,9 +248,9 @@ Dispatch prompt starts with `Active task: <task path from task.py current>`. Rea
      instead of dispatching sub-agents. -->
 
 [workflow-state:in_progress-inline]
-Flow: `suncode-before-dev` -> choose one behavior -> red test -> green implementation -> refactor while green -> `suncode-check` -> validation -> `suncode-update-spec` -> commit (Phase 3.4) -> `/suncode:finish-work`.
-Do not dispatch implement/check sub-agents in inline mode.
-Read context: `prd.md` -> `design.md if present` -> `implement.md if present`, plus relevant spec/research loaded by skills.
+Flow: start the same DAG with `--executor inline` -> claim one behavior node -> `suncode-before-dev` -> red test -> green implementation -> refactor while green -> NodeResult -> next ready node -> final integration/check barrier -> `suncode-update-spec` -> commit (Phase 3.4) -> `/suncode:finish-work`.
+Do not dispatch implement/check sub-agents in inline mode; inline is concurrency one.
+Read the claimed node manifest, plus relevant specs loaded by skills without broadening node boundaries.
 [/workflow-state:in_progress-inline]
 
 ### Phase 3: Finish
@@ -444,21 +448,41 @@ Skip this step. Context is loaded directly by the `suncode-before-dev` skill in 
 
 [/codex-inline, Kilo, Antigravity, Devin]
 
-#### 1.4 Activate task `[required · once]`
+#### 1.4 Plan execution DAG `[required · once when execution.dag.enabled]`
 
-After artifact review, flip the task status to `in_progress`:
+This is a planning-finalization gate, not a per-turn action. Enter it only after blocking questions are empty and the PRD/design/implementation view plus TDD behavior slices have converged.
+
+- If `execution.json` is missing, scaffold it once, review/edit the behavior graph, validate once, and show it in the final planning summary.
+- If the existing plan still matches, reuse it without scaffold or validation.
+- If a material planning change affects the DAG, edit affected nodes and edges in place, validate once, present the changed graph in a new final planning summary, and wait for fresh approval.
+
+Never automatically run `scaffold --force`.
+
+```bash
+python3 ./.suncode/scripts/task.py execution scaffold <task-dir>  # missing plan only
+python3 ./.suncode/scripts/task.py execution validate <task-dir>  # new or materially changed plan only
+python3 ./.suncode/scripts/task.py execution show <task-dir> --json
+```
+
+Treat `scaffold` as a conservative starting point. Rewrite complex plans into real dependency-safe behavior nodes. Each node declares the public behavior, read/write scopes, logical resources, validation, minimal context, and executor policy. Preserve independent nodes so capable executors can run them together; make all branches feed a final integration/check barrier. Shared-worktree check nodes are read-only and return findings to a single dependent fix node. Inline consumes this same graph with concurrency one.
+
+#### 1.5 Activate task `[required · once]`
+
+Do not re-run `execution validate` here for an unchanged reviewed DAG. If artifacts changed materially after the final summary, return to Phase 1.4, update and validate once, present the new summary, and wait for fresh approval.
+
+After the user approves the latest summary, flip the task status to `in_progress`:
 
 ```bash
 python3 ./.suncode/scripts/task.py start <task-dir>
 ```
 
-For lightweight tasks, `prd.md` can be enough. For complex tasks, `prd.md`, `design.md`, and `implement.md` must exist and be reviewed before start. On sub-agent-dispatch platforms, `implement.jsonl` and `check.jsonl` must both have real curated entries before start. Runtime consumers tolerate missing or seed-only manifests for compatibility, but that tolerance is not a planning-ready state.
+For lightweight tasks, PRD-only human documentation plus a one-node graph is enough when DAG is enabled. For complex tasks, `prd.md`, `design.md`, `implement.md`, and the reviewed DAG must exist before start. On sub-agent-dispatch platforms, `implement.jsonl` and `check.jsonl` must both have real curated entries before start. Runtime consumers tolerate missing or seed-only manifests for compatibility, but that tolerance is not a planning-ready state.
 
 After this command succeeds, the breadcrumb auto-switches to `[workflow-state:in_progress]`, and the rest of Phase 2 / 3 follows.
 
 If `task.py start` errors with a session-identity message (no context key from hook input, `SUNCODE_CONTEXT_ID`, or platform-native session env), follow the hint in the error to set up session identity, then retry.
 
-#### 1.5 Completion criteria
+#### 1.6 Completion criteria
 
 | Condition | Required |
 |------|:---:|
@@ -468,6 +492,7 @@ If `task.py start` errors with a session-identity message (no context key from h
 | `research/` has artifacts (complex tasks) | recommended |
 | `design.md` exists (complex tasks) | ✅ |
 | `implement.md` exists (complex tasks) | ✅ |
+| `execution.json` exists and validates when DAG is enabled; complex branches end at a final integration/check barrier | ✅ |
 
 [Claude Code, Cursor, OpenCode, codex-sub-agent, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi]
 
@@ -483,11 +508,13 @@ Goal: turn reviewed planning artifacts into code that passes quality checks.
 
 #### 2.1 Implement `[required · repeatable]`
 
-Run one behavior slice at a time. Do not write all tests first and do not implement multiple behaviors before seeing a failing test.
+The main session first starts or recovers the shared DAG runtime. For every `execution ready --json` response, claim and dispatch **all** selected safe nodes before waiting. Wait for the first NodeResult, call `execution complete`, and immediately recompute ready; do not wait for a whole batch. Native workers receive the returned manifest-first prompt (Codex `fork_turns = "none"`), channel workers receive `channelArgs`, and inline executes one claimed node from the same manifest.
+
+Inside each claimed implementation node, run one behavior slice at a time. Do not write all tests first and do not implement multiple behaviors before seeing a failing test.
 
 For each behavior:
 
-1. Pick the next behavior from `prd.md` or `implement.md`.
+1. Pick the behavior declared by the node manifest and confirm it maps to `prd.md` / `implement.md` acceptance.
 2. Identify the public interface to test. Prefer the smallest user-facing or module-facing boundary that expresses the behavior.
 3. Write one failing test that describes the expected behavior. The test must fail for the right reason before implementation starts.
 4. Implement the smallest code path that makes that test pass.
@@ -508,7 +535,7 @@ Spawn the implement sub-agent:
 
 - **Agent type**: `suncode-implement`
 - **Task description**: Implement the reviewed task artifacts using one behavior slice at a time: red test through a public interface, green implementation, refactor only while green; finish by running focused tests plus project lint and type-check
-- **Dispatch prompt guard**: Tell the spawned agent it is already the `suncode-implement` sub-agent and must implement directly, not spawn another `suncode-implement` / `suncode-check`.
+- **Dispatch prompt guard**: Use the claimed node's returned prompt beginning with `Active task:` and `Suncode context manifest:`. The worker implements only that node and does not spawn another worker.
 
 The platform hook/plugin auto-handles:
 - Reads `implement.jsonl` and injects referenced spec/research files into the agent prompt
@@ -522,7 +549,7 @@ Spawn the implement sub-agent:
 
 - **Agent type**: `suncode-implement`
 - **Task description**: Implement the reviewed task artifacts using one behavior slice at a time: red test through a public interface, green implementation, refactor only while green; finish by running focused tests plus project lint and type-check
-- **Dispatch prompt guard**: The prompt MUST start with `Active task: <task path>`, then explicitly say the spawned agent is already `suncode-implement` and must implement directly without spawning another `suncode-implement` / `suncode-check`.
+- **Dispatch prompt guard**: Use the claimed node's returned prompt beginning with `Active task:` and `Suncode context manifest:`; dispatch with `fork_turns = "none"`. The worker implements only that node.
 
 The Codex sub-agent definition auto-handles the context load requirement:
 - Resolves the active task with `task.py current --source`, then reads `prd.md`, `design.md` if present, and `implement.md` if present
@@ -536,7 +563,7 @@ Spawn the implement sub-agent:
 
 - **Agent type**: `suncode-implement`
 - **Task description**: Implement the reviewed task artifacts using one behavior slice at a time: red test through a public interface, green implementation, refactor only while green; finish by running focused tests plus project lint and type-check
-- **Dispatch prompt guard**: Tell the spawned agent it is already the `suncode-implement` sub-agent and must implement directly, not spawn another `suncode-implement` / `suncode-check`.
+- **Dispatch prompt guard**: Use the claimed node's returned manifest-first prompt. The worker implements only that node and does not spawn another worker.
 
 The platform prelude auto-handles the context load requirement:
 - Reads `implement.jsonl` and injects referenced spec/research files into the agent prompt
@@ -561,15 +588,15 @@ The platform prelude auto-handles the context load requirement:
 Spawn the check sub-agent:
 
 - **Agent type**: `suncode-check`
-- **Task description**: Review all code changes against specs and task artifacts; fix any findings directly; ensure lint and type-check pass
-- **Dispatch prompt guard**: Tell the spawned agent it is already the `suncode-check` sub-agent and must review/fix directly, not spawn another `suncode-check` / `suncode-implement`.
+- **Task description**: Review the claimed scope against specs and task artifacts; return structured findings and validation evidence
+- **Dispatch prompt guard**: Use the claimed check node's manifest-first prompt. In a shared worktree it is read-only and does not spawn another worker.
 
 The check agent's job:
 - Review code changes against specs
 - Review code changes against `prd.md`, `design.md` if present, and `implement.md` if present
 - Verify each completed behavior has a test that fails without the implementation and passes through a public interface
 - Verify mocks are limited to system boundaries and not internal implementation details
-- Auto-fix issues it finds
+- Return findings through NodeResult v1; route code changes through one dependent `fix` node
 - Run focused tests, lint, and typecheck to verify
 
 [/Claude Code, Cursor, OpenCode, codex-sub-agent, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi]
